@@ -1,0 +1,232 @@
+---
+title: 'Bioinformatics in R. Lab 2: DSeq2'
+author: "J. Cesar Ignacio Espinoza - Cesar   "
+date: 'Week 02: March 25 and 27, 2024'
+output:
+  pdf_document: default
+  html_document:
+    highlight: espresso
+    theme: cerulean
+---
+
+```{r setup}
+    ### Edit this line so your notebook renders properly
+    knitr::opts_knit$set(root.dir = normalizePath("C:/Users/nneka/Documents/KGI_2024/Bioinformatics_in _R/Data_Bio_in_ R_2024"))
+```
+
+## Differential Gene Expression From Counts Table to DeSeq2
+Begin by downloading the data from (Same link as in today's canvas page), download to your working directory.
+
+#Install the required librries and load the data.
+
+Look at the code block below, it will install DESEQ2
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("DESeq2") #differences in gene expression between two or more samples. account for differences in library depth
+```
+
+We now load the libraries
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, results="hide"}
+# We first need to import the important libnrary for today's class, dplyr
+library(dplyr)
+library(readr)
+library(DESeq2)
+library(ggplot2)
+
+```
+You can import data into DESeq2 from multiple sources, specifically:
+
+- From transcript abundance files and tximport
+- From a count matrix
+- From htseq-count files
+- From a SummarizedExperiment object
+
+We will be uploading from a counts table:
+```{r}
+### Run this chunk to import the counts table and metadata into your evironment.
+counts <- read.csv("~/KGI_2024/Bioinformatics_in _R/Data_Bio_in_ R_2024/airway_scaledcounts.csv", row.names = 1, header = TRUE)
+metadata <- read.csv(  "~/KGI_2024/Bioinformatics_in _R/Data_Bio_in_ R_2024/airway_metadata.csv", row.names = 1, header = TRUE)
+```
+
+**Side Quest** From Monday Excercise, open a text exitor or even excel! Anc create a metadata file from the small dataset that you ran monday (solution posted on canvas, feel free to run it if you need to do that again!)
+
+**Main Story** Explore your data, both the counts table and the metadata.
+
+```{r}
+### Create a new data object called it sample_info, use the same information as metadata but remove the GEO_ID Column, and change the name from dex to dexamethasone in the header, show your code here
+
+sample_info <-airway_metadata %>%
+  select(-geo_id) %>%
+  dplyr::rename(dexamethasone = dex)
+sample_info
+View(sample_info)
+```
+
+You have all you need to run DESeq2, a counts table and a metadata. 
+
+**SideQuest** Look into the console and type DESeqDataSet and see what options you get, create a code chunk here and write the different functions as comments with a couple of words describing the kind of input they take!
+
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = sample_info,
+                              design = ~ dexamethasone)
+```
+
+And after that you have your dds object!!
+
+Take a look at it!
+
+```{r}
+
+#dds
+# You can recover the original counts matrix with the counts function!
+counts(dds)
+```
+
+### It is a good idea to remove cells with low counts, why? Noise reduction: Low-count cells may contain a high level of technical noise, which can affect downstream analysis and interpretation of the data. Removing these cells can help reduce noise and improve the accuracy of the analysis.
+Improved statistical power: By removing low-count cells, the remaining cells will have higher counts, which can improve the statistical power of the analysis and increase the likelihood of detecting true biological signals.
+Computational efficiency: Removing low-count cells can reduce the computational burden of downstream analysis, making the process more efficient and allowing for faster and more accurate results
+HINT: Think about it from the statistics point of view
+
+**Write your thoughts here:**
+
+#### Students that took R already, use base R to subset the  dds object based on the sum accross a row, 
+say I just want to keep genes with > than 10 reads across al samples!?!
+
+#### Students that haven;t take R think about a pseudocode way to do it!
+```{r}
+### WRITE YOUR CODE HERE 
+subset_dds <- dds[rowSums(counts(dds)) >10]
+subset_dds
+  
+```
+
+### How many genes are retained? 
+i.e. how many passed the filtering step?
+
+**Answer Here**: 19083
+
+Set a factor level:
+#### Important, DESeq2 will need a reference (think about it as the baseline, wildtype, untreated, control, etc...)
+It will normally take the first one alfabetical, but to make sure you can use the relevel function! Look at this example, edit
+according to what you are working with # wildtype baseline
+
+```{r}
+#relevel(data$drug, ref = 'control')\
+relevel(dds$dexamethasone, ref = 'control')
+```
+
+Now actually run DESEQ 
+
+```{r}
+dds <- DESeq(subset_dds) #normalizing that the gene might not be expressed 
+```
+
+Look at the output as it runs! This is actually running on your computer, so depending on what you have it might take 10 seconds or a couple of minutes
+
+### Let's Start looking at the data:
+run counts() again on the object created from the main DESEq function, create two code chunks, run the counts() method twice but add normalzied=T to one of them, look at the diffrences, which ones are scaled up? which ones are scaled down?
+```{r}
+### Chunk 1
+```
+
+We are now ready to look at our results! We apply the results function, print the help of the results function and select an alpha of 0.05
+```{r}
+res <- results(dds, alpha = 0.05) #log2 negative down regulated #padj adjusted P value 
+res
+```
+### And that's it! you have a set of genes and how differentially expressed these genes are!
+
+Use the summary() function to look at your data 
+```{r}
+summary(res)
+```
+```{r}
+counts(dds, normalized=T)
+```
+How many genes are upregulaed?? How many are downregulated??
+
+Use the order() fucntion to sor the res object by adjusted p values
+
+# Intro to Viz:
+
+M stands for "minus" or "log ratio": On the horizontal axis (x-axis), you'll see the expression levels of genes in one condition (like healthy cells), subtracted from the expression levels in another condition (like diseased cells). This gives you a measure of how much the gene expression changes between the two conditions.
+
+A stands for "average" or "average abundance": On the vertical axis (y-axis), you'll see the average expression levels of genes from both conditions. This helps to see if there's any bias or systematic difference between the two conditions.
+
+```{r}
+plotMA(dds)
+```
+
+### This is it guys! Save your notebook and submit it for credit for today's activity! Monday we will be looking at more complex visuzaliations with DESeq outputs!
+
+```{r}
+BiocManager::install("gprofiler")
+BiocManager::install("EnhancedVolcanoa")
+
+```
+```{r}
+library(EnhancedVolcano)
+sigs.df =as.data.frame(res)
+EnhancedVolcano(sigs.df, x='log2FoldChange', y='padj', lab = rownames(sigs.df))
+```
+#https://bioconductor.org/packages/devel/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
+```{r}
+sigs.df =as.data.frame(res)
+sigs.df
+```
+```{r}
+ EnhancedVolcano(res,
+    lab = rownames(res),
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    selectLab = c('VCAM1','KCTD12','ADAM12',
+      'CXCL12','CACNB2','SPARCL1','DUSP1','SAMHD1','MAOA'),
+    xlab = bquote(~Log[2]~ 'fold change'),
+    pCutoff = 10e-14,
+    FCcutoff = 2.0,
+    pointSize = 4.0,
+    labSize = 6.0,
+    labCol = 'black',
+    labFace = 'bold',
+    boxedLabels = TRUE,
+    colAlpha = 4/5,
+    legendPosition = 'right',
+    legendLabSize = 14,
+    legendIconSize = 4.0,
+    drawConnectors = TRUE,
+    widthConnectors = 1.0,
+    colConnectors = 'black')
+```
+```{r}
+lab_italics <- paste0("italic('", rownames(res), "')")
+  selectLab_italics = paste0(
+    "italic('",
+    c('VCAM1','KCTD12','ADAM12', 'CXCL12','CACNB2','SPARCL1','DUSP1','SAMHD1','MAOA'),
+    "')")
+  EnhancedVolcano(res,
+    lab = lab_italics,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    selectLab = selectLab_italics,
+    xlab = bquote(~Log[2]~ 'fold change'),
+    pCutoff = 10e-14,
+    FCcutoff = 1.0,
+    pointSize = 3.0,
+    labSize = 6.0,
+    labCol = 'black',
+    labFace = 'bold',
+    boxedLabels = TRUE,
+    parseLabels = TRUE,
+    col = c('black', 'pink', 'purple', 'red3'),
+    colAlpha = 4/5,
+    legendPosition = 'bottom',
+    legendLabSize = 14,
+    legendIconSize = 4.0,
+    drawConnectors = TRUE,
+    widthConnectors = 1.0,
+    colConnectors = 'black') + coord_flip()
+```

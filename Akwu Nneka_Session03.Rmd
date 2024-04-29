@@ -1,0 +1,267 @@
+---
+title: 'Bioinformatics in R. Lab 2: Data Visualization and GO analysis'
+author: "J. Cesar Ignacio Espinoza - Cesar   "
+date: 'Week 03: April 1st and 3rd 2024'
+output:
+  pdf_document: default
+  html_document:
+    highlight: espresso
+    theme: cerulean
+---
+
+```{r setup}
+    ### Edit this line so your notebook renders properly
+    knitr::opts_knit$set(root.dir = normalizePath("C:/Users/nneka/Documents/KGI_2024/Bioinformatics_in _R/Data_Bio_in_ R_2024")) 
+```
+
+## Differential Gene Expression From Counts Table to DeSeq2
+Begin by downloading the data from (Same link as in today's canvas page), download to your working directory.
+
+#Install the required librries and load the data.
+
+You will have to install enhanced volcano, if this gives issues like last time, we can try a different software.
+```{r}
+#BiocManager::install("EnhancedVolcano")
+```
+
+We now load the libraries
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, results="hide"}
+# We first need to import the important libnrary for today's class, dplyr
+library(dplyr)
+library(readr)
+library(DESeq2)
+library(ggplot2)
+library(EnhancedVolcano)
+
+```
+
+Here we will run the entire dseq program to find significantly expressed genes
+
+```{r}
+### Run this chunk to import the counts table and metadata into your evironment.
+counts <- read.csv('airway_scaledcounts.csv', row.names = 1, header = TRUE)
+metadata <- read.csv('airway_metadata.csv', row.names = 1, header = TRUE)
+### Modify the metadata table
+sample_info <- metadata %>%
+  dplyr::select(-geo_id) %>%
+  dplyr::rename(dexamethasone = dex)
+sample_info
+
+#creat a deseqobject
+
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = sample_info,
+                              design = ~ dexamethasone)
+## Subset your ddseq object
+subset <-  dds[(rowSums(counts(dds)) >= 10),]
+
+### fix the base to a preferred treatment
+relevel(dds$dexamethasone, ref='control')
+
+### Run deseq2
+
+deseq_ob <- DESeq(subset)
+
+#### Save the results to a new object
+res <- results(deseq_ob, alpha = 0.05)
+```
+
+### New packages: 
+This package will be able to convert between ENSEMBL ID and symbol (gene names) 
+
+```{r}
+#if (!require("BiocManager", quietly = TRUE)) # converts the symbol to gene name 
+#    install.packages("BiocManager")
+BiocManager::install("org.Hs.eg.db")
+```
+
+```{r}
+library("org.Hs.eg.db")
+sigs.df <-  as.data.frame(res)
+sigs.df$symbol <- mapIds(org.Hs.eg.db, keys= rownames(sigs.df), keytype = 'ENSEMBL', colum = "SYMBOL")
+```
+
+```{r}
+sigs.df
+```
+### Make your first volcano plot!
+```{r}
+EnhancedVolcano(sigs.df, x='log2FoldChange', y = 'padj', lab = sigs.df$symbol)
+
+```
+Look at the manual (vignette for enhanced volcano) https://bioconductor.org/packages/devel/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
+Create a new code chunk and plot a better version of this volcano plot! (15 minutes)
+
+```{r}
+p1 <- EnhancedVolcano(res,
+    lab = sigs.df$symbol,
+    x = "log2FoldChange",
+    y = "pvalue",
+    pCutoff = 10e-4,
+    FCcutoff = 2,
+    ylim = c(0, -log10(10e-12)),
+    pointSize = c(ifelse(res$log2FoldChange>2, 8, 1)),
+    labSize = 6.0,
+    shape = c(6, 6, 19, 16),
+    title = "DESeq2 results",
+    subtitle = "Differential expression",
+    caption = bquote(~Log[2]~ "fold change cutoff, 2; p-value cutoff, 10e-4"),
+    legendPosition = "right",
+    legendLabSize = 14,
+    colAlpha = 0.9,
+    colGradient = c('red3', 'royalblue'),
+    drawConnectors = TRUE,
+    hline = c(10e-8),
+    widthConnectors = 0.5)
+  p1
+```
+```{r}
+install.packages(ggalt)
+  # define different cell-types that will be shaded
+  celltype1 <- c('VCAM1','CXCL12')
+  celltype2 <- c('SORT1', 'KLF15')
+  has_ggalt <- ! is(try(find.package("ggalt")), "try-error")
+  
+  EnhancedVolcano(res,
+    lab = sigs.df$symbol,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    selectLab = c(if (has_ggalt) celltype1 else NULL, celltype2),
+    xlab = bquote(~Log[2]~ 'fold change'),
+    title = 'Shading cell-type 1|2',
+    pCutoff = 10e-14,
+    FCcutoff = 1.0,
+    pointSize = 8.0,
+    labSize = 6.0,
+    labCol = 'black',
+    labFace = 'bold',
+    boxedLabels = TRUE,
+    shape = 42,
+    colCustom = keyvals,
+    colAlpha = 1,
+    legendPosition = 'right',
+    legendLabSize = 20,
+    legendIconSize = 20.0,
+    # encircle
+      encircle = if (has_ggalt) celltype1 else NULL,
+      encircleCol = 'black',
+      encircleSize = 2.5,
+      encircleFill = 'pink',
+      encircleAlpha = 1/2,
+    # shade
+      shade = celltype2,
+      shadeAlpha = 1/2,
+      shadeFill = 'skyblue',
+      shadeSize = 1,
+      shadeBins = 5,
+    drawConnectors = TRUE,
+    widthConnectors = 2.0,
+    gridlines.major = TRUE,
+    gridlines.minor = FALSE,
+    border = 'full',
+    borderWidth = 5,
+    borderColour = 'black')
+```
+## Heatmaps!
+```{R}
+BiocManager::install("ComplexHeatmap")
+library(ComplexHeatmap)
+```
+
+```{R}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 0.05) #adjusted p-value
+```
+
+```{R}
+mat <- counts(deseq_ob, normalized = T)[rownames(diff.df),] 
+mat.z <- t # t implies transpose_this takes out the coloumn names 
+colnames(mat.z) <- colnames(mat)
+Heatmap(mat.z, cluster_rows= T, cluster_columns= T, name = "Z-score", row_labels = diff.df[rownames(mat.z),]$symbol) #[] sub setting
+```
+## Use dplyr to subset the table of significant values until you get a nice looking figure. 
+(You cannot plot all genes at once so you have to subset in order to gain some insights from 
+your data)
+```{R}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 0.05, log2FoldChange > 3.5, baseMean > 100)
+
+mat <- counts(deseq_ob, normalized = T)[rownames(diff.df),]
+mat.z <- t(apply(mat,1, scale))
+colnames(mat.z) <- colnames(mat)
+Heatmap(mat.z, cluster_rows= T, cluster_columns= T, name = "Z-score", row_labels = diff.df[rownames(mat.z),]$symbol)
+
+```
+Exercise changing log2FoldChange
+```{R}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 0.05, log2FoldChange > 4, baseMean > 100)
+
+mat <- counts(deseq_ob, normalized = T)[rownames(diff.df),]
+mat.z <- t(apply(mat,1, scale))
+colnames(mat.z) <- colnames(mat)
+Heatmap(mat.z, cluster_rows= T, cluster_columns= T, name = "Z-score", row_labels = diff.df[rownames(mat.z),]$symbol)
+### Random number seed
+
+```
+## Gene Ontology Analysis
+```{R}
+BiocManager::install('clusterProfiler')
+library(clusterProfiler)
+```
+
+```{R}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 0.05)
+
+genes_to_test <- rownames(diff.df)
+GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db", keyType = 'ENSEMBL', ont = "BP")
+fit <- plot(barplot(GO_results, showCategory=10))
+```
+
+```{R}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 0.05, log2FoldChange >2)# filters for expression above 2
+
+genes_to_test <- rownames(diff.df)
+GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db", keyType = 'ENSEMBL', ont = "BP")
+fit <- plot(barplot(GO_results, showCategory=10))
+```
+
+
+```{R}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 0.05, log2FoldChange>2, baseMean >100)
+
+genes_to_test <- rownames(diff.df)
+GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db", keyType = 'ENSEMBL', ont = "BP")
+fit <- plot(barplot(GO_results, showCategory=10))
+```
+Anothe program is gost, we can try it below.
+```{R}
+library(gprofiler2) 
+go_upreg <- gost(genes_to_test, organism = 'hsapiens', significant = T)
+gostplot(go_upreg, interactive = T)
+```
+It might be more informative to create plots for genes that are both upregulated and downregulated. Subset your data above and plot the GO enrichment for both upregulated and downreghulated.
+```{R}
+library(gprofiler2) 
+go_upreg <- gost(genes_to_test, organism = 'hsapiens', significant = F)
+gostplot(go_upreg, interactive = T)
+```
+
+GSEA Plot, make one, Cesar will explain what it means 
+```{R}
+res <- res[order(-res$stat),]
+gene_list <- res$stat
+names(gene_list) <- rownames(res)
+gse <- gseGO(gene_list, ont = "BP", keyType = "ENSEMBL", OrgDb ="org.Hs.eg.db", eps = 1e-300 )
+gseaplot(gse, geneSetID = "GO:0046324" )
+
+```
