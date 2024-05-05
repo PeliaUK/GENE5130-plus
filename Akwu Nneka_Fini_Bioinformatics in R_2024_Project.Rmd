@@ -1,0 +1,362 @@
+---
+title: "Bioinformatics in R Project"
+author: "Nneka Akwu"
+date: "2024-05-03"
+output: html_document
+---
+
+```{r setup}
+        knitr::opts_knit$set(root.dir = normalizePath("C:/Users/nneka/Documents/KGI_2024/BioinformaticsInR2004/Project/Project_Data"))
+```
+
+```{r}
+### To import the counts table and metadata into the environment.
+counts <- read.table("C:/Users/nneka/Documents/KGI_2024/BioinformaticsInR2004/Project/Project_Data/grch38_counts.txt", row.names = 1, header = TRUE)
+metadata <- read.csv(  "~/KGI_2024/BioinformaticsInR2004/Project/Project_Data/BioInRProject2024Metadata.csv", row.names = 1, header = TRUE)
+```
+
+```{r}
+View(counts)
+View(metadata)
+```
+
+```{r}
+# This code removes the first five columns from the counts matrix i.e. to exclude  redundant columns e.g chr, start, end, strand, length 
+counts <- counts[, -c(1:5)] 
+```
+
+```{r}
+#change counts column names to match metadata
+new_names <- rownames(metadata)
+#new_names
+colnames(counts) <- new_names
+##This code assigns the row names of the metadata data frame to a new variable called new_names. Then, it sets the column names of the counts matrix to be the same as the new_names vector. In other words, this code is renaming the columns of the counts matrix to match the row names of the metadata data frame. This is often done to ensure that the column names of the count matrix match the sample names in the metadata, which can be important for downstream analysis steps. Assuming that metadata is a data frame with sample information and counts is a matrix with gene counts, this code is renaming the columns of the counts matrix to match the sample names in the metadata data frame. This can help ensure that the sample names are consistent across both data objects, which can be important for downstream analysis steps such as differential expression analysis.
+```
+
+```{r}
+# import library needed for analysis, dplyr, readr, DESeq2, ggplot2
+library(dplyr)
+library(readr)
+library(DESeq2)
+library(ggplot2)
+##These lines of code load four R packages: dplyr, readr, DESeq2, and ggplot2.
+###dplyr is a package for data manipulation and filtering, providing a grammar of data manipulation that is designed to make data manipulation tasks easier and more intuitive.
+###readr is a package for reading rectangular data (like CSV and TSV) into R. It is designed for speed and simplicity, and provides a consistent interface to a variety of file formats.
+###DESeq2 is a package for differential expression analysis of count data, such as RNA-seq data. It uses a statistical model to estimate the significance of changes in gene expression levels between different experimental conditions.
+###ggplot2 is a package for creating statistical graphics, such as scatter plots, line graphs, and bar charts. It provides a grammar of graphics that allows users to build complex plots from simple components.
+```
+
+```{r}
+##This code creates a DESeqDataSet object called dds by combining the count data in counts with the sample information in metadata, and specifying the experimental design based on the Treatment factor.
+sample_info <- metadata
+dds <- DESeqDataSetFromMatrix(countData = counts, colData = sample_info, design = ~ Treatment)
+```
+```{r}
+##This code creates a new DESeqDataSet object called subset_dds by filtering the original dds object to only include genes with at least 10 counts across all samples, which can help improve the accuracy and reliability of downstream analysis steps such as differential expression analysis.
+subset_dds <- dds[rowSums(counts(dds)) >= 10,]
+subset_dds
+```
+```{r}
+##This code reorders the levels of the Treatment factor in the dds object, setting the Baseline level as the reference level for downstream analysis steps such as differential expression analysis.
+relevel(dds$Treatment, ref = "Baseline")
+```
+```{r}
+##This code performs a differential expression analysis on the subset_dds object using the DESeq function from the DESeq2 package, returning a DESeqResults object called deseq_ob that contains the results of the analysis.
+deseq_ob <- DESeq(subset_dds)
+```
+```{r}
+##This code performs a differential expression analysis on the subset_dds object using the DESeq function from the DESeq2 package, returning a DESeqResults object called deseq_ob that contains the results of the analysis.
+deseq_ob <- DESeq(subset_dds)
+```
+```{r}
+##This code extracts the results of the differential expression analysis from the deseq_ob object, filters for genes with an adjusted p-value below 0.05, and prints the resulting DESeqResults object, followed by a summary of the results
+res <- results(deseq_ob, alpha = 0.05)
+res
+summary(res)
+####Result interpretation: This code extracts the results of the differential expression analysis from the deseq_ob object, filters for genes with an adjusted p-value below 0.05, and prints the resulting DESeqResults object, followed by a summary of the results. The resulting res object contains the log2 fold changes, p-values, and adjusted p-values for each gene, filtered for genes with an adjusted p-value below 0.05. The summary of the results shows the number of significant genes, the distribution of the log2 fold changes, and the percentage of genes with positive or negative log2 fold changes. By filtering for genes with an adjusted p-value below 0.05, the res object can help identify genes that are significantly differentially expressed between different experimental conditions, and can provide insights into the underlying biological mechanisms and processes that are associated with the experimental conditions. The summary of the results can help assess the overall significance and direction of the changes in gene expression levels, and can provide a global view of the biological processes that are affected by the experimental .conditions/
+```
+```{r}
+plotMA(deseq_ob)
+```
+``````{r}
+#BiocManager::install("gprofiler")
+#BiocManager::install("EnhancedVolcano")
+###The code installs two Bioconductor packages, "gprofiler" for functional profiling of gene lists and "EnhancedVolcano" for creating customizable volcano plots, in R programming language
+```
+```{r}
+#if (!require("BiocManager", quietly = TRUE)) # converts the symbol to gene name 
+    #install.packages("BiocManager")
+#BiocManager::install("org.Hs.eg.db")
+###The given R code checks if the "BiocManager" package is available and installs it if it is not. Then, it installs the "org.Hs.eg.db" package using BiocManager. The "org.Hs.eg.db" package provides genome-wide annotation for Human, primarily based on mapping using Entrez Gene identifiers. The code ensures that the necessary packages are installed for working with Human genomic data using Bioconductor.
+```
+
+```{r}
+library("org.Hs.eg.db")
+sigs.df <-  as.data.frame(res)
+sigs.df$symbol <- mapIds(org.Hs.eg.db, keys= rownames(sigs.df), keytype = 'ENSEMBL', colum = "SYMBOL")
+##The first line of the code loads the "org.Hs.eg.db" package into the R environment. The second line converts the "res" object into a data frame, which is stored in the variable "sigs.df". The third line maps the ENSEMBL gene IDs in the rownames of "sigs.df" to their corresponding gene symbols using the "mapIds" function from the "org.Hs.eg.db" package. The "keys" argument is set to the rownames of "sigs.df", the "keytype" argument is set to 'ENSEMBL', and the "column" argument is set to "SYMBOL". The resulting data frame is stored in the "symbol" column of "sigs.df". This allows for easier interpretation and visualization of the results by using the more recognizable gene symbols instead of the ENSEMBL IDs.
+```
+
+```{r}
+sigs.df
+```
+```{r}
+rowcontents <- sigs.df$symbol
+print(rowcontents)
+```
+
+```{r}
+EnhancedVolcano(sigs.df,
+    lab = sigs.df$symbol,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    title = 'CBD oil treatment vs Baseline',
+    pCutoff = 10e-1,
+    FCcutoff = 1.5,
+    pointSize = 3.0,
+    labSize = 6.0)
+```
+```{r}
+#Custom colour over-ride Volcano plot
+ # create custom key-value pairs for 'high', 'low', 'mid' expression by fold-change
+  # this can be achieved with nested ifelse statements
+  keyvals <- ifelse(
+    res$log2FoldChange < -2.5, 'royalblue',
+      ifelse(sigs.df$log2FoldChange > 2.5, 'gold',
+        'black'))
+  keyvals[is.na(keyvals)] <- 'black'
+  names(keyvals)[keyvals == 'gold'] <- 'high'
+  names(keyvals)[keyvals == 'black'] <- 'mid'
+  names(keyvals)[keyvals == 'royalblue'] <- 'low'
+  
+   EnhancedVolcano(sigs.df,
+    lab = sigs.df$symbol,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    selectLab = sigs.df$symbol[which(names(keyvals) %in% c('high', 'low'))],
+    xlab = bquote(~Log[2]~ 'fold change'),
+    title = 'CBD treatment Vs Baseline',
+    pCutoff = 10e-14,
+    FCcutoff = 1.0,
+    pointSize = 3.5,
+    labSize = 4.5,
+    shape = c(6, 4, 2, 11),
+    max.overlaps= 20,
+    colCustom = keyvals,
+    colAlpha = 1,
+    legendPosition = 'left',
+    legendLabSize = 15,
+    legendIconSize = 5.0,
+    drawConnectors = TRUE,
+    widthConnectors = 1.0,
+    colConnectors = 'black',
+    arrowheads = FALSE,
+    gridlines.major = TRUE,
+    gridlines.minor = FALSE,
+    border = 'partial',
+    borderWidth = 1.5,
+    borderColour = 'black')
+```
+## Heatmaps:A heatmap is a graphical representation of data where the individual values contained in a matrix are represented as colors.
+  
+```{r}
+#BiocManager::install("ComplexHeatmap") #Complex heatmaps are efficient to visualize associations between different sources of data sets and reveal potential patterns. Here the ComplexHeatmap package provides a highly flexible way to arrange multiple heatmaps and supports various annotation graphics
+library(ComplexHeatmap)
+
+```
+
+```{r}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 0.9) #adjusted p-value
+```
+
+```{r}
+mat <- counts(deseq_ob, normalized = T)[rownames(diff.df),] 
+mat.z <- t(apply(mat,1,scale)) # t implies transpose_this takes out the coloumn names 
+colnames(mat.z) <- colnames(mat)
+Heatmap(mat.z, cluster_rows= T, cluster_columns= T, name = "Z-score", row_labels = diff.df[rownames(mat.z),]$symbol) #[] sub setting
+```
+## Using dplyr to subset the table of significant values until a nice looking figure is derieved.
+(All genes cannot be plotted at once so you have to subset in order to gain some insights from 
+your data)
+```{r}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj >  0.9, log2FoldChange < 3, baseMean > 20000)
+```
+
+```{r}
+mat <- counts(deseq_ob, normalized = T)[rownames(diff.df),]
+mat.z <- t(apply(mat,1, scale))
+colnames(mat.z) <- colnames(mat)
+Heatmap(mat.z, cluster_rows= T, cluster_columns= T, name = "Z-score", row_labels = diff.df[rownames(mat.z),]$symbol)
+
+```
+
+## Gene Ontology Analysis
+```{r}
+#BiocManager::install('clusterProfiler')
+library(clusterProfiler)
+```
+
+```{r}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 1)
+
+genes_to_test <- rownames(diff.df)
+GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db", keyType = 'ENSEMBL', ont = "BP")
+fit <- plot(barplot(GO_results, showCategory=10))
+```
+
+```{R}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 1, log2FoldChange > 0)# filters for expression above 0
+
+genes_to_test <- rownames(diff.df)
+GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db", keyType = 'ENSEMBL', ont = "BP")
+fit <- plot(barplot(GO_results, showCategory=10))
+```
+
+
+```{r}
+diff.df <- as.data.frame(sigs.df)
+diff.df <- diff.df %>%
+  filter(padj < 1, log2FoldChange>0, baseMean >20000)
+
+genes_to_test <- rownames(diff.df)
+GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db", keyType = 'ENSEMBL', ont = "BP")
+fit <- plot(barplot(GO_results, showCategory=10))
+```
+#gost:GOST plot is a type of scatter plot that displays the distribution of genes or proteins across different Gene Ontology (GO) categories. The x-axis of the plot represents the GO category, and the y-axis represents the number of genes or proteins in that category. Each point on the plot corresponds to a gene or protein, and its position along the x-axis indicates its GO category, while its position along the y-axis indicates its abundance. GOST plots are often used in bioinformatics to visualize and analyze the functional enrichment of gene or protein sets.
+```{r}
+library(gprofiler2) 
+go_upreg <- gost(genes_to_test, organism = 'hsapiens', significant = T)
+gostplot(go_upreg, interactive = T)
+```
+
+#KEGG pathway
+```{r}
+# #BiocManager::install("pathview")
+# BiocManager::install("gageData")
+# BiocManager::install("gage")
+# BiocManager::install("AnnotationDbi")
+
+library(pathview)
+library(gage)
+library(gageData)
+library(AnnotationDbi)
+```
+
+```{r}
+#To add reference sequence IDs as a new column
+res$refseq = (row.names(res))
+
+res$SYMBOL = mapIds(org.Hs.eg.db,
+                    key= res$refseq,
+                    column="SYMBOL",
+                    keytype = "ENSEMBL",
+                    multivals ="first")
+
+res$ENTREZ = mapIds(org.Hs.eg.db,
+                    key= res$refseq,
+                    column="ENTREZID",
+                    keytype = "ENSEMBL",
+                    multivals ="first")
+```
+```{r}
+foldchanges = res$log2FoldChange
+names(foldchanges) = res$ENTREZ
+#This R command extracts the log2 fold change values from the res object and assigns them to a new variable foldchanges, and then sets the names of the foldchanges vector to the corresponding ENTREZ gene identifiers.
+```
+
+
+```{r}
+data("go.sets.hs")
+data("go.subs.hs")
+#These R commands load two pre-defined data sets, go.sets.hs and go.subs.hs, which contain information about gene ontology (GO) sets and subsets for the organism Homo sapiens (human)
+```
+
+```{r}
+gobpsets = go.sets.hs[go.subs.hs$BP]
+gobpres = gage(exprs = foldchanges, gsets = gobpsets, same.dir = TRUE)
+```
+More datasets
+```{r}
+data("kegg.sets.hs")
+data("sigmet.idx.hs")
+kegg.sets.hs = kegg.sets.hs[sigmet.idx.hs]
+```
+
+```{r}
+keggres = gage(foldchanges, gsets = kegg.sets.hs, same.dir = TRUE)
+```
+
+```{r}
+keggrespathways = data.frame(id = rownames(keggres$greater), keggres$greater)
+keggrespathways
+```
+
+Second most upregulated pathway
+```{r}
+# keggrespathways = data.frame(id = rownames(keggres$greater), keggres$greater) %>%
+#   tibble::as_tibble() %>%
+#   filter(row_number() == 2) %>%
+#   .$id %>%
+#   as.character()
+keggrespathways
+```
+
+```{r}
+keggrespathways = data.frame(id = rownames(keggres$greater), keggres$greater) %>%
+  tibble::as_tibble() %>%
+  filter(row_number() <= 5) %>%
+  .$id %>%
+  as.character()
+keggrespathways
+```
+
+filter kegg ids to just the first 8 characters
+```{r}
+keggresids = substr(keggrespathways, start=1, stop=8)
+keggresids
+```
+
+Plots and downloads the pathway
+```{r}
+tmp = sapply(keggresids, function(pid) pathview(gene.data = foldchanges, pathway.id = pid, species = "hsa"))
+```
+
+Shows the pathway image
+```{r}
+knitr::include_graphics("hsa03040.pathview.png", error = FALSE)
+```
+
+
+Most downregulated pathway
+```{r}
+keggrespathways2 = data.frame(id = rownames(keggres$less), keggres$less) %>%
+  tibble::as_tibble() %>%
+  filter(row_number() == 1) %>%
+  .$id %>%
+  as.character()
+keggrespathways2
+```
+filter kegg ids to just the first 8 characters
+```{r}
+keggresids2 = substr(keggrespathways2, start=1, stop=8)
+keggresids2
+```
+
+Plots and downloads the pathway
+```{r}
+tmp2 = sapply(keggresids2, function(pid) pathview(gene.data = foldchanges, pathway.id = pid, species = "hsa"))
+```
+
+Shows the pathway image
+```{r}
+knitr::include_graphics("hsa04110.pathview.png", error = FALSE)
+```
+
